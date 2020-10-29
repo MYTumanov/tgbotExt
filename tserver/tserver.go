@@ -2,8 +2,8 @@ package tserver
 
 import (
 	"log"
-	"tbotext/trouter"
 
+	"github.com/MYTumanov/tgbotext/trouter"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
