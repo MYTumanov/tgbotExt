@@ -19,15 +19,15 @@ type TelegramServer struct {
 
 	Router trouter.Router
 
-	userChan map[int]chan (tgbotapi.Message)
+	// userChan map[int]chan (tgbotapi.Message)
 }
 
-func (t *TelegramServer) getUserChan(ID int) chan (tgbotapi.Message) {
-	if _, ok := t.userChan[ID]; !ok {
-		t.userChan[ID] = make(chan tgbotapi.Message)
-	}
-	return t.userChan[ID]
-}
+// func (t *TelegramServer) getUserChan(ID int) chan (tgbotapi.Message) {
+// 	if _, ok := t.userChan[ID]; !ok {
+// 		t.userChan[ID] = make(chan tgbotapi.Message)
+// 	}
+// 	return t.userChan[ID]
+// }
 
 // func (t *TelegramServer) getUserCtx(ID int) *context.Context {
 // 	if _, ok := t.userCtx[ID]; !ok {
@@ -45,8 +45,6 @@ func (t TelegramServer) ListenAndServe() {
 	if err != nil {
 		log.Panic(err)
 	}
-
-	t.userChan = make(map[int]chan tgbotapi.Message)
 
 	// webhook or going for update with timeout
 	var updates tgbotapi.UpdatesChannel
@@ -70,9 +68,11 @@ func (t TelegramServer) ListenAndServe() {
 		log.Println("LOG ", update.Message.From.ID)
 		f := t.Router.Match(*update.Message)
 		if f != nil {
-			msgChan := t.getUserChan(update.Message.From.ID)
-			go f.Serve(bot, msgChan)
-			msgChan <- *update.Message
+			msg := trouter.Message{
+				Router: &t.Router,
+				Msg:    update.Message,
+			}
+			go f.Serve(bot, msg)
 		}
 	}
 }

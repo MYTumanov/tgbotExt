@@ -7,25 +7,63 @@ import (
 )
 
 // TbotServe ...
-type TbotServe func(*tgbotapi.BotAPI, tgbotapi.Message)
+type TbotServe func(*tgbotapi.BotAPI, Message)
 
 // TbotChanServe ...
-type TbotChanServe func(*tgbotapi.BotAPI, <-chan (tgbotapi.Message))
+// type TbotChanServe func(*tgbotapi.BotAPI, <-chan (tgbotapi.Message))
 
+type defaultSendToUserChan struct{}
+
+// Handler wrapper for input funcs
 type Handler interface {
-	Serve(*tgbotapi.BotAPI, <-chan (tgbotapi.Message))
+	Serve(*tgbotapi.BotAPI, Message)
 }
 
-// Serve ...
-func (t TbotServe) Serve(b *tgbotapi.BotAPI, mChan <-chan (tgbotapi.Message)) {
-	m := <-mChan
+// Serve invokes input func
+func (t TbotServe) Serve(b *tgbotapi.BotAPI, m Message) {
+	if _, ok := m.Router.userChan[m.Msg.From.ID]; !ok {
+		m.msgChan = make(chan *tgbotapi.Message)
+		m.Router.userChan[m.Msg.From.ID] = m.msgChan
+	}
+	log.Println("MAP Serve", m.Router.userChan[m.Msg.From.ID])
+	go defaultSender.Serve(b, m)
 	t(b, m)
 }
 
-// Serve ...
-func (t TbotChanServe) Serve(b *tgbotapi.BotAPI, mChan <-chan (tgbotapi.Message)) {
+// Serve invokes input func
+// func (t TbotChanServe) Serve(b *tgbotapi.BotAPI, mChan chan (tgbotapi.Message), msg tgbotapi.Message) {
+// 	go func() {
+// 		// todo: add nonblocking send with timeout
+// 		mChan <- msg
+// 	}()
+// 	t(b, mChan)
+// }
 
-	t(b, mChan)
+var defaultSender defaultSendToUserChan = defaultSendToUserChan{}
+
+func (d defaultSendToUserChan) Serve(b *tgbotapi.BotAPI, m Message) {
+	log.Println("START defaultSendToUserChan")
+	if _, ok := m.Router.userChan[m.Msg.From.ID]; !ok {
+		m.msgChan = make(chan *tgbotapi.Message)
+		m.Router.userChan[m.Msg.From.ID] = m.msgChan
+	}
+	log.Println("MAP defaultSendToUserChan", m.Router.userChan[m.Msg.From.ID])
+	m.Router.userChan[m.Msg.From.ID] <- m.Msg
+	log.Println("END defaultSendToUserChan")
+}
+
+type Message struct {
+	Router  *Router
+	msgChan chan *tgbotapi.Message
+	Msg     *tgbotapi.Message
+}
+
+// GetMsg return tg message. Read from channal. Blocking.
+func (m *Message) GetMsg() *tgbotapi.Message {
+	if _, ok := m.Router.userChan[m.Msg.From.ID]; !ok {
+		m.msgChan = make(chan *tgbotapi.Message)
+	}
+	return <-m.Router.userChan[m.Msg.From.ID]
 }
 
 // Route ...
@@ -38,14 +76,10 @@ type Route struct {
 
 // Router ...
 type Router struct {
-	// Stores commands and func to handle
-	// router map[string]TbotServe
+	userChan map[int]chan *tgbotapi.Message
 
 	// Stores user id and func that must be handle to request message
 	chainHandlers map[int]*Route
-
-	// Stores commands and chained commands
-	// chain map[string]Route
 
 	// Stores commands and hadle struct
 	handlers map[string]*Route
@@ -58,6 +92,7 @@ func NewRouter() *Router {
 		chainHandlers: make(map[int]*Route),
 		// chain:       make(map[string]Route),
 		handlers: make(map[string]*Route),
+		userChan: make(map[int]chan *tgbotapi.Message),
 	}
 }
 
@@ -81,7 +116,7 @@ func (r *Router) Match(msg tgbotapi.Message) Handler {
 		log.Printf("MATCH: command false, text %v \n", msg.Text)
 		if route, ok := r.chainHandlers[userID]; ok {
 			log.Printf("MATCH: user matched true \n")
-			var f Handler
+			var f Handler = defaultSender
 			if len(route.chain) > route.curChainElement {
 				log.Printf("MATCH: chained func found true \n")
 				f = route.chain[route.curChainElement]
@@ -98,7 +133,7 @@ func (r *Router) Match(msg tgbotapi.Message) Handler {
 }
 
 // HandleComandFunc adds commad and handle func
-func (r *Router) HandleComandFunc(command string, f func(*tgbotapi.BotAPI, tgbotapi.Message)) *Route {
+func (r *Router) HandleComandFunc(command string, f func(*tgbotapi.BotAPI, Message)) *Route {
 	route := &Route{
 		command:         command,
 		commandFunc:     TbotServe(f),
@@ -110,7 +145,7 @@ func (r *Router) HandleComandFunc(command string, f func(*tgbotapi.BotAPI, tgbot
 }
 
 // ChainedFunc adds chain handle func
-func (r *Route) ChainedFunc(f func(*tgbotapi.BotAPI, tgbotapi.Message)) *Route {
+func (r *Route) ChainedFunc(f func(*tgbotapi.BotAPI, Message)) *Route {
 	r.chain = append(r.chain, TbotServe(f))
 	return r
 }
