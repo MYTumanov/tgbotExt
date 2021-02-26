@@ -14,7 +14,7 @@ type Router struct {
 	handlers map[string]*Handler
 
 	// context keep user and its function/chainfunctions to run
-	uContxt map[int]userContext
+	uContxt map[int]*userContext
 }
 
 // Handler keeps list of funcs
@@ -26,13 +26,16 @@ type userContext struct {
 	userID         int
 	currentFunc    HandlerFunc
 	currentFuncNum int
+	currentCommand string
+
+	router *Router
 }
 
 // NewRouter returns new router
 func NewRouter() *Router {
 	return &Router{
 		handlers: make(map[string]*Handler),
-		uContxt:  make(map[int]userContext),
+		uContxt:  make(map[int]*userContext),
 	}
 }
 
@@ -55,25 +58,47 @@ func (h *Handler) ChainedFunc(f HandlerFunc) *Handler {
 
 // Match search for func by input command and run it
 func (r *Router) Match(command string, userID int) (HandlerFunc, error) {
-	if _, ok := r.handlers[command]; !ok {
-		return nil, errors.New("Command not found")
-	}
 	// define is user context exist, if not - set it
 	if _, ok := r.uContxt[userID]; !ok {
-		r.uContxt[userID] = userContext{
+		r.uContxt[userID] = &userContext{
 			userID:         userID,
-			currentFunc:    r.handlers[command].funcs[0],
-			currentFuncNum: 0,
+			router:         r,
+			currentCommand: command,
 		}
 	}
-
 	userCnxt := r.uContxt[userID]
-	f := userCnxt.currentFunc
-	userCnxt.currentFuncNum++
-	if len(r.handlers[command].funcs) > userCnxt.currentFuncNum {
+
+	if command != "" {
+		command = "/" + command
+		if _, ok := r.handlers[command]; !ok {
+			return nil, errors.New("Command not found")
+		}
+
+		userCnxt.currentFuncNum = 0
+		userCnxt.currentCommand = command
 		userCnxt.currentFunc = r.handlers[command].funcs[userCnxt.currentFuncNum]
+
 	} else {
-		userCnxt.currentFunc = nil
+		userCnxt.currentFuncNum++
+		if len(r.handlers[userCnxt.currentCommand].funcs) > userCnxt.currentFuncNum {
+			userCnxt.currentFunc = r.handlers[userCnxt.currentCommand].funcs[userCnxt.currentFuncNum]
+		} else {
+			userCnxt.currentFunc = nil
+			return nil, errors.New("Command not found")
+		}
+
 	}
-	return f, nil
+
+	return userCnxt.currentFunc, nil
+}
+
+func (u *userContext) getExecutionFunc() HandlerFunc {
+	u.currentFuncNum++
+	if len(u.router.handlers[u.currentCommand].funcs) > u.currentFuncNum {
+		u.currentFunc = u.router.handlers[u.currentCommand].funcs[u.currentFuncNum]
+
+	} else {
+		u.currentFunc = nil
+	}
+	return u.currentFunc
 }

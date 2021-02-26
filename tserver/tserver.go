@@ -48,7 +48,8 @@ func (t TelegramServer) ListenAndServe() {
 	for update := range updates {
 		log.Println("LOG ", update.Message.From.ID)
 		log.Println("LOG ", update.Message.Text)
-		f, err := t.Router.Match(update.Message.Text, update.Message.From.ID)
+		log.Println("LOG ", update.Message.Command())
+		f, err := t.Router.Match(update.Message.Command(), update.Message.From.ID)
 		if err != nil {
 			log.Println(err)
 		} else {
