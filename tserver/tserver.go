@@ -18,26 +18,7 @@ type TelegramServer struct {
 	Timeout int
 
 	Router trouter.Router
-
-	// userChan map[int]chan (tgbotapi.Message)
 }
-
-// func (t *TelegramServer) getUserChan(ID int) chan (tgbotapi.Message) {
-// 	if _, ok := t.userChan[ID]; !ok {
-// 		t.userChan[ID] = make(chan tgbotapi.Message)
-// 	}
-// 	return t.userChan[ID]
-// }
-
-// func (t *TelegramServer) getUserCtx(ID int) *context.Context {
-// 	if _, ok := t.userCtx[ID]; !ok {
-// 		log.Println("New user context")
-// 		ctx := context.Background()
-// 		t.userCtx[ID] = &ctx
-// 	}
-// 	log.Println("Old user context")
-// 	return t.userCtx[ID]
-// }
 
 // ListenAndServe listens for incoming messages and serves them
 func (t TelegramServer) ListenAndServe() {
@@ -66,13 +47,12 @@ func (t TelegramServer) ListenAndServe() {
 
 	for update := range updates {
 		log.Println("LOG ", update.Message.From.ID)
-		f := t.Router.Match(*update.Message)
-		if f != nil {
-			msg := trouter.Message{
-				Router: &t.Router,
-				Msg:    update.Message,
-			}
-			go f.Serve(bot, msg)
+		log.Println("LOG ", update.Message.Text)
+		f, err := t.Router.Match(update.Message.Text, update.Message.From.ID)
+		if err != nil {
+			log.Println(err)
+		} else {
+			f(bot, update.Message)
 		}
 	}
 }
